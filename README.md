@@ -1,5 +1,18 @@
 # Telegram RSS Feed Reader Bot
 
+## Table of Contents
+1. [Description](#description)
+2. [Features](#features)
+3. [Prerequisites](#prerequisites)
+4. [Installation](#installation)
+5. [Try This Bot](#try-this-bot)
+6. [How to Use This Bot on Telegram](#how-to-use-this-bot-on-telegram)
+7. [Configuration](#configuration)
+8. [Security](#security)
+9. [Contributing](#contributing)
+10. [License](#license)
+11. [Acknowledgments](#acknowledgments)
+
 ## Description
 
 This Telegram bot allows users to subscribe to RSS feeds and receive updates directly in their Telegram chats. Users can
@@ -33,11 +46,8 @@ To use the bot:
 
 Feel free to explore the bot's features and start adding your favorite RSS feeds!
 
-## How to Use This Bot on Telegram
 
-(This section remains the same as in the previous update)
-
-... (rest of the README continues)
+# Project Details
 
 ## Prerequisites
 

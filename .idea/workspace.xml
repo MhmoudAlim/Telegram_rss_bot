@@ -4,11 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c8929a1-3246-49a0-9be3-e53bb883e51d" name="Changes" comment="secure bot_token and example .env.example">
-      <change afterPath="$PROJECT_DIR$/LICENSE.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/blob/@a_feed_bot.jpeg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    <list default="true" id="6c8929a1-3246-49a0-9be3-e53bb883e51d" name="Changes" comment="update README.md">
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -128,12 +125,48 @@
       <option name="project" value="LOCAL" />
       <updated>1727775835512</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="add LICENSE.md">
+      <option name="closed" value="true" />
+      <created>1727777175027</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1727777175027</updated>
+    </task>
+    <task id="LOCAL-00004" summary="add blob files">
+      <option name="closed" value="true" />
+      <created>1727777183151</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1727777183151</updated>
+    </task>
+    <task id="LOCAL-00005" summary="add README.md">
+      <option name="closed" value="true" />
+      <created>1727777200143</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1727777200143</updated>
+    </task>
+    <task id="LOCAL-00006" summary="update README.md">
+      <option name="closed" value="true" />
+      <created>1727777281985</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1727777281985</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="init" />
     <MESSAGE value="secure bot_token and example .env.example" />
-    <option name="LAST_COMMIT_MESSAGE" value="secure bot_token and example .env.example" />
+    <MESSAGE value="add LICENSE.md" />
+    <MESSAGE value="add blob files" />
+    <MESSAGE value="add README.md" />
+    <MESSAGE value="update README.md" />
+    <option name="LAST_COMMIT_MESSAGE" value="update README.md" />
   </component>
 </project>
