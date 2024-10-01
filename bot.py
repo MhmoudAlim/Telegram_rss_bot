@@ -7,12 +7,21 @@ import time
 import requests
 import logging
 import json
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Get the bot token from environment variables
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+bot = telebot.TeleBot(BOT_TOKEN)
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-bot = telebot.TeleBot(BOT_TOKEN)
 
 # File to store user data
 USER_DATA_FILE = 'user_data.json'
