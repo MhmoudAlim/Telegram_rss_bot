@@ -23,7 +23,7 @@ You can start using this RSS Feed Reader Bot right now on Telegram!
 
 Or scan this QR code with your mobile device to open the bot in Telegram:
 
-<img src="https://github.com/MhmoudAlim/telegram-rss-bot/blob/@a_feed_bot" alt="QR Code for @a_feed_bot" />
+<img src="https://github.com/MhmoudAlim/Telegram_rss_bot/blob/master/blob/@a_feed_bot.jpeg?raw=true" alt="QR Code for @a_feed_bot" />
 
 
 To use the bot:
@@ -50,7 +50,7 @@ Feel free to explore the bot's features and start adding your favorite RSS feeds
 
 1. Clone the repository:
    ```
-   git clone https://github.com/MhmoudAlim/telegram-rss-bot.git
+   git clone https://github.com/MhmoudAlim/Telegram_rss_bot.git
    cd telegram-rss-bot
    ```
 
