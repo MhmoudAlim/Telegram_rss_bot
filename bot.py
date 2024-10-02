@@ -1,250 +1,418 @@
-import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import feedparser
-from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime, timedelta
-import time
-import requests
 import logging
-import json
 import os
+import pickle
+import time
+
 from dotenv import load_dotenv
+import feedparser
+import requests
+from telegram import Update, ReplyKeyboardRemove
+from telegram.error import Conflict
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ConversationHandler,
+    ContextTypes,
+    CallbackContext,
+    filters,
+)
+
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.debug("Script started")
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
 
-# Get the bot token from environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-bot = telebot.TeleBot(BOT_TOKEN)
+BOT_USER_NAME = os.getenv('BOT_USER_NAME', 'صاحبي')
+
+# Check if BOT_TOKEN is loaded
+if not BOT_TOKEN:
+    logger.error("BOT_TOKEN is not set. Please set it in your .env file.")
+    exit(1)
+
+# File path for storing user data persistently
+DATA_FILE = 'user_feeds.pkl'
+
+# Global dictionary to store user feed data
+user_feeds = {}
+
+# Global variable for the bot application
+application = None
+
+# Conversation states for adding a feed
+ASK_URL, ASK_INTERVAL = range(2)
 
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-
-
-# File to store user data
-USER_DATA_FILE = 'user_data.json'
-
-
-# Load user data from file
-def load_user_data():
-    try:
-        with open(USER_DATA_FILE, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-
-# Save user data to file
-def save_user_data(data):
-    with open(USER_DATA_FILE, 'w') as f:
-        json.dump(data, f)
-
-
-# User data storage
-user_data = load_user_data()
-
-
-@bot.message_handler(commands=['start'])
-def start(message):
-    user_id = str(message.from_user.id)
-    if user_id not in user_data:
-        user_data[user_id] = {'feeds': []}
-        save_user_data(user_data)
-
-    bot.reply_to(message, "Welcome to the RSS Feed Reader Bot! \n  Use /help to see available commands.")
-    logging.info(f"User {user_id} started the bot")
-
-
-@bot.message_handler(commands=['help'])
-def help(message):
-    help_text = """
-Available commands:
-/start - Start the bot and get a welcome message
-/help - Show this help message
-/add - Add a new RSS feed
-/list - List all your current feeds
-/remove - Remove a feed
-/interval - Change update interval for a feed
+def load_data():
     """
-    bot.reply_to(message, help_text)
-
-
-@bot.message_handler(commands=['add'])
-def add_feed(message):
-    bot.reply_to(message, "Please send the RSS feed URL you want to add.")
-    bot.register_next_step_handler(message, process_feed_url)
-
-
-def process_feed_url(message):
-    url = message.text.strip()
-    user_id = str(message.from_user.id)
-
+       Load user feed data from a file to maintain persistence across restarts.
+       """
+    global user_feeds
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        parsed_feed = feedparser.parse(response.text)
-
-        if not parsed_feed.entries:
-            raise ValueError("No entries found in the feed")
-
-        user_data[user_id]['feeds'].append({'url': url, 'interval': 60})  # Default interval: 60 minutes
-        save_user_data(user_data)
-
-        bot.reply_to(message,
-                     f"Feed added successfully. Now, please specify the update interval in minutes (e.g., 30 for checking every 30 minutes).")
-        bot.register_next_step_handler(message, set_interval, url)
+        if os.path.exists(DATA_FILE) and os.path.getsize(DATA_FILE) > 0:
+            with open(DATA_FILE, 'rb') as f:
+                user_feeds = pickle.load(f)
+            logger.info('User feed data loaded successfully.')
+        else:
+            user_feeds = {}
+            logger.info('No existing user feed data found or file is empty. Starting fresh.')
+    except EOFError:
+        logger.warning('Error reading user feed data. File might be corrupted. Starting fresh.')
+        user_feeds = {}
     except Exception as e:
-        bot.reply_to(message, f"Error adding feed: {str(e)}")
-        logging.error(f"Error adding feed for user {user_id}: {str(e)}", exc_info=True)
+        logger.error(f'Unexpected error loading user feed data: {e}. Starting fresh.')
+        user_feeds = {}
 
 
-def set_interval(message, url):
+def save_data():
+    """
+    Save user feed data to a file for persistence.
+    """
+    with open(DATA_FILE, 'wb') as f:
+        pickle.dump(user_feeds, f)
+    logger.info('User feed data saved.')
+
+
+def is_valid_feed(url):
+    """
+    Check if the provided URL is a valid RSS feed.
+    """
     try:
-        interval = int(message.text.strip())
-        if interval < 1:
-            raise ValueError("Interval must be a positive integer.")
+        # First, try to get the content of the URL
+        response = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0 (compatible; RSS Reader Bot/1.0)'})
+        response.raise_for_status()  # Raise an exception for bad status codes
 
-        user_id = str(message.from_user.id)
-        for feed in user_data[user_id]['feeds']:
-            if feed['url'] == url:
-                feed['interval'] = interval
-                save_user_data(user_data)
-                bot.reply_to(message, f"Update interval set to {interval} minutes for the feed: {url}")
-                return
+        # Then, try to parse the content as a feed
+        d = feedparser.parse(response.content)
 
-        bot.reply_to(message, "Error: Feed not found. Please try adding the feed again.")
-    except ValueError as e:
-        bot.reply_to(message, f"Invalid interval. Please enter a positive integer. Error: {str(e)}")
+        # Log some information about the parsed feed
+        logger.info(f"Parsed feed for {url}:")
+        logger.info(f"Feed type: {d.version}")
+        logger.info(f"Feed title: {d.feed.get('title', 'No title')}")
+        logger.info(f"Number of entries: {len(d.entries)}")
 
-
-@bot.message_handler(commands=['list'])
-def list_feeds(message):
-    user_id = str(message.from_user.id)
-    if user_id not in user_data or not user_data[user_id]['feeds']:
-        bot.reply_to(message, "You haven't added any feeds yet. Use /add to add a feed.")
-    else:
-        feed_list = "Your feeds:\n"
-        for i, feed in enumerate(user_data[user_id]['feeds'], 1):
-            feed_list += f"{i}. {feed['url']} (Update interval: {feed['interval']} minutes)\n"
-        bot.reply_to(message, feed_list)
+        # Check if it's a valid feed
+        if d.bozo == 0 and ('title' in d.feed or len(d.entries) > 0):
+            return True
+        else:
+            logger.warning(f"Invalid feed structure for {url}: {d.bozo_exception}")
+            return False
+    except requests.RequestException as e:
+        logger.error(f"Error fetching feed {url}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error parsing feed {url}: {e}")
+        return False
 
 
-@bot.message_handler(commands=['remove'])
-def remove_feed(message):
-    user_id = str(message.from_user.id)
-    if user_id not in user_data or not user_data[user_id]['feeds']:
-        bot.reply_to(message, "You don't have any feeds to remove.")
+def parse_feed_with_user_agent(url):
+    """
+    Parse the RSS feed using a custom User-Agent to prevent HTTP 403 errors.
+    """
+    try:
+        # First, try to get the content of the URL
+        response = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0 (compatible; RSS Reader Bot/1.0)'})
+        response.raise_for_status()  # Raise an exception for bad status codes
+
+        # Then, try to parse the content as a feed
+        d = feedparser.parse(response.content)
+
+        # Check for parsing errors
+        if d.bozo and d.bozo_exception:
+            logger.warning(f"Parsing warning for feed {url}: {d.bozo_exception}")
+
+        return d
+    except requests.RequestException as e:
+        logger.error(f"Error fetching feed {url}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Error parsing feed {url}: {e}")
+        return None
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handle the /start command. Send a welcome message and usage instructions.
+    """
+    welcome_message = (
+        f'مسا مسا يا {BOT_USER_NAME}\n\n'
+        'دوس على /add عشان تضيف فيد RSS جديد\n'
+        'دوس /list عشان تشوف الفيدات اللي ضفتها\n'
+        'دوس /remove <رقم_الفيد> عشان تشيل فيد\n'
+        'لو عايز تشوف الكلام ده تاني، دوس على /help.'
+    )
+    await update.message.reply_text(welcome_message)
+    logger.info(f"User {update.effective_chat.id} started the bot.")
+
+
+async def add_feed_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Initiate the conversation to add a new RSS feed.
+    """
+    await update.message.reply_text('ابعتلي لينك الـ RSS اللي عايز تضيفه.')
+    return ASK_URL
+
+
+async def add_feed_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Receive the RSS feed URL from the user.
+    """
+    rss_url = update.message.text.strip()
+
+    # Ensure the URL starts with http:// or https://
+    if not rss_url.startswith('http://') and not rss_url.startswith('https://'):
+        rss_url = 'http://' + rss_url
+
+    # Save the URL in the user's context without modifying it
+    context.user_data['rss_url'] = rss_url
+
+    # Validate the RSS feed URL
+    if not is_valid_feed(rss_url):
+        await update.message.reply_text('اللينك ده مش شغال. تأكد منه وحاول تاني، أو جرب لينك تاني.\n')
+
+        return ASK_URL  # Ask for the URL again
+
+    await update.message.reply_text('دلوقتي قولي كل قد ايه عايز البوت يشيك على الفيد ده (بالدقايق) .'
+                                    ' بس اكتب الرقم بس، يعني مثلا لو كتبت 30 \n'
+                                    '\n يبقي البوت هيدور كل ٣٠ دقيقه لو في جديد في الفيد و يبعتهولك')
+    return ASK_INTERVAL
+
+
+async def add_feed_interval(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Receive the update interval from the user and complete the feed addition.
+    """
+    chat_id = update.effective_chat.id
+    interval_str = update.message.text.strip()
+
+    # Convert interval to integer and validate
+    try:
+        interval = int(interval_str)
+        if interval <= 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text('لازم تكتب رقم صحيح وموجب. حاول تاني.')
+        return ASK_INTERVAL  # Ask for the interval again
+
+    rss_url = context.user_data['rss_url']
+
+    # Initialize the user's feed list if it doesn't exist
+    if chat_id not in user_feeds:
+        user_feeds[chat_id] = []
+
+    # Add the new feed to the user's list
+    feed_info = {
+        'url': rss_url,
+        'interval': interval,
+        'last_entry_id': None,
+        'job': None  # Will hold the Job instance
+    }
+    user_feeds[chat_id].append(feed_info)
+
+    # Save the updated data
+    save_data()
+
+    # Schedule the feed checking job
+    job_queue = context.job_queue
+    job = job_queue.run_repeating(
+        check_feed_for_user_feed,
+        interval=interval * 60,
+        first=0,
+        chat_id=chat_id,
+        name=f"{chat_id}_{rss_url}",
+        data={'chat_id': chat_id, 'feed': feed_info}
+    )
+    feed_info['job'] = job
+
+    await update.message.reply_text('تمام، ضفنا الفيد بنجاح!', reply_markup=ReplyKeyboardRemove())
+    logger.info(f"User {chat_id} added a new feed: {rss_url} with interval {interval} minutes.")
+
+    # End the conversation
+    return ConversationHandler.END
+
+
+async def add_feed_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Cancel the feed addition process.
+    """
+    await update.message.reply_text('خلاص، ألغينا إضافة الفيد.', reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
+
+async def list_feeds(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    List all RSS feeds that the user has added.
+    """
+    chat_id = update.effective_chat.id
+
+    # Check if the user has any feeds
+    if chat_id not in user_feeds or not user_feeds[chat_id]:
+        await update.message.reply_text('مفيش فيدات مضافة.')
         return
 
-    keyboard = InlineKeyboardMarkup()
-    for i, feed in enumerate(user_data[user_id]['feeds'], 1):
-        keyboard.add(InlineKeyboardButton(f"{i}. {feed['url']}", callback_data=f"remove_{i - 1}"))
+    # Build the message listing the user's feeds
+    message = 'الفيدات بتاعتك:\n'
+    for idx, feed in enumerate(user_feeds[chat_id], start=1):
+        message += f"{idx}. {feed['url']} (كل {feed['interval']} دقيقة)\n"
 
-    bot.reply_to(message, "Select a feed to remove:", reply_markup=keyboard)
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('remove_'))
-def callback_remove_feed(call):
-    user_id = str(call.from_user.id)
-    feed_index = int(call.data.split('_')[1])
-
-    if 0 <= feed_index < len(user_data[user_id]['feeds']):
-        removed_feed = user_data[user_id]['feeds'].pop(feed_index)
-        save_user_data(user_data)
-        bot.answer_callback_query(call.id, f"Removed feed: {removed_feed['url']}")
-        bot.edit_message_text("Feed removed successfully.", call.message.chat.id, call.message.message_id)
-    else:
-        bot.answer_callback_query(call.id, "Invalid feed selection.")
+    await update.message.reply_text(message)
+    logger.info(f"User {chat_id} requested their feed list.")
 
 
-@bot.message_handler(commands=['interval'])
-def change_interval(message):
-    user_id = str(message.from_user.id)
-    if user_id not in user_data or not user_data[user_id]['feeds']:
-        bot.reply_to(message, "You don't have any feeds to modify.")
+async def remove_feed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Remove an RSS feed from the user's list based on its number.
+    """
+    chat_id = update.effective_chat.id
+
+    # Ensure the correct number of arguments is provided
+    if len(context.args) != 1:
+        await update.message.reply_text('استخدم الأمر كده: /remove <رقم_الفيد>')
         return
 
-    keyboard = InlineKeyboardMarkup()
-    for i, feed in enumerate(user_data[user_id]['feeds'], 1):
-        keyboard.add(InlineKeyboardButton(f"{i}. {feed['url']}", callback_data=f"interval_{i - 1}"))
-
-    bot.reply_to(message, "Select a feed to change its interval:", reply_markup=keyboard)
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('interval_'))
-def callback_change_interval(call):
-    user_id = str(call.from_user.id)
-    feed_index = int(call.data.split('_')[1])
-
-    if 0 <= feed_index < len(user_data[user_id]['feeds']):
-        bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "Please enter the new interval in minutes:")
-        bot.register_next_step_handler(call.message, process_new_interval, feed_index)
-    else:
-        bot.answer_callback_query(call.id, "Invalid feed selection.")
-
-
-def process_new_interval(message, feed_index):
+    # Validate the feed number
     try:
-        new_interval = int(message.text.strip())
-        if new_interval < 1:
-            raise ValueError("Interval must be a positive integer.")
-
-        user_id = str(message.from_user.id)
-        user_data[user_id]['feeds'][feed_index]['interval'] = new_interval
-        save_user_data(user_data)
-        bot.reply_to(message, f"Interval updated to {new_interval} minutes for the selected feed.")
-    except ValueError as e:
-        bot.reply_to(message, f"Invalid interval. Please enter a positive integer. Error: {str(e)}")
-
-
-def check_feed_updates():
-    logging.info("Checking feed updates...")
-    current_time = datetime.now()
-    for user_id, user_info in user_data.items():
-        for feed in user_info['feeds']:
-            if 'last_checked' not in feed or current_time - datetime.fromisoformat(feed['last_checked']) >= timedelta(
-                    minutes=feed['interval']):
-                try:
-                    logging.info(f"Fetching feed: {feed['url']}")
-                    response = requests.get(feed['url'], timeout=10)
-                    response.raise_for_status()
-
-                    parsed_feed = feedparser.parse(response.text)
-
-                    if not parsed_feed.entries:
-                        logging.warning(f"No entries found for feed: {feed['url']}")
-                        continue
-
-                    latest_entry = parsed_feed.entries[0]
-
-                    if 'last_entry' not in feed or feed['last_entry'] != latest_entry.get('id',
-                                                                                          latest_entry.get('link')):
-                        message = f"New post in {parsed_feed.feed.get('title', 'Unknown Feed')}:\n{latest_entry.get('title', 'No title')}\n{latest_entry.get('link', 'No link')}"
-                        bot.send_message(user_id, message)
-                        logging.info(f"Sent update to user {user_id}: {message}")
-                        feed['last_entry'] = latest_entry.get('id', latest_entry.get('link'))
-
-                    feed['last_checked'] = current_time.isoformat()
-                    save_user_data(user_data)
-                except requests.exceptions.RequestException as e:
-                    logging.error(f"Error fetching feed {feed['url']}: {e}")
-                except Exception as e:
-                    logging.error(f"Error processing feed {feed['url']}: {e}", exc_info=True)
+        feed_number = int(context.args[0]) - 1  # Adjust for zero-based indexing
+        if chat_id in user_feeds and 0 <= feed_number < len(user_feeds[chat_id]):
+            feed_info = user_feeds[chat_id].pop(feed_number)
+            # Cancel the associated job
+            if feed_info['job']:
+                feed_info['job'].schedule_removal()
+            save_data()
+            await update.message.reply_text(f"شلنا الفيد ده: {feed_info['url']}")
+            logger.info(f"User {chat_id} removed feed: {feed_info['url']}")
+        else:
+            await update.message.reply_text('رقم الفيد مش صح.')
+    except ValueError:
+        await update.message.reply_text('لازم تكتب رقم الفيد صح.')
 
 
-# Set up the scheduler
-scheduler = BackgroundScheduler()
-scheduler.add_job(check_feed_updates, 'interval', minutes=1)
-scheduler.start()
+async def check_feed_for_user_feed(context: CallbackContext):
+    """
+    Check a specific RSS feed for new entries and send updates to the user.
+    """
+    job = context.job
+    chat_id = job.chat_id
+    data = job.data
+    feed = data['feed']
 
-# Start the bot
-while True:
     try:
-        logging.info("Starting bot polling...")
-        bot.polling(none_stop=True)
+        # Parse the feed with a custom User-Agent
+        d = parse_feed_with_user_agent(feed['url'])
+        if d is None or not d.entries:
+            return  # No entries to process or parsing failed
+
+        latest_entry = d.entries[0]
+
+        # Check if there's a new entry since the last check
+        if feed['last_entry_id'] != latest_entry.id:
+            feed['last_entry_id'] = latest_entry.id  # Update the last seen entry ID
+
+            # Build the message to send
+            message = (
+                f"*في جديد من {d.feed.title}:*\n\n"
+                f"*{latest_entry.title}*\n{latest_entry.link}"
+            )
+
+            # Send the update to the user
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=message,
+                parse_mode='Markdown',
+                disable_web_page_preview=False
+            )
+
+            # Save the updated feed data
+            save_data()
+            logger.info(f"Sent new entry to user {chat_id} from feed {feed['url']}")
+
     except Exception as e:
-        logging.error(f"Bot polling error: {e}", exc_info=True)
-        time.sleep(15)
+        logger.error(f"Error checking feed {feed['url']}: {e}")
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Provide a list of available commands and their usage.
+    """
+    help_text = (
+        "بص يا صاحبي \n"
+        "/start - ابدأ البوت وشوف التعليمات\n"
+        "/add - ضيف فيد RSS جديد\n"
+        "/list - شوف الفيدات اللي ضفتها\n"
+        "/remove <رقم_الفيد> - شيل فيد\n"
+        "/help - اعرض الرسالة دي تاني"
+    )
+    await update.message.reply_text(help_text)
+    logger.info(f"User {update.effective_chat.id} requested help.")
+
+
+def main():
+    """
+      Main function to start the bot and set up handlers.
+      """
+    global application
+
+    # Initialize the Application
+    application = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .build()
+    )
+
+    # Load existing user data
+    load_data()
+
+    # Create the ConversationHandler for adding a feed
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('add', add_feed_start)],
+        states={
+            ASK_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_feed_url)],
+            ASK_INTERVAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_feed_interval)],
+        },
+        fallbacks=[CommandHandler('cancel', add_feed_cancel)],
+    )
+
+    # Register handlers
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(conv_handler)
+    application.add_handler(CommandHandler('list', list_feeds))
+    application.add_handler(CommandHandler('remove', remove_feed))
+    application.add_handler(CommandHandler('help', help_command))
+
+    # Schedule existing feed checker jobs
+    job_queue = application.job_queue
+    for chat_id, feeds in user_feeds.items():
+        for feed in feeds:
+            job = job_queue.run_repeating(
+                check_feed_for_user_feed,
+                interval=feed['interval'] * 60,
+                first=0,
+                chat_id=chat_id,
+                name=f"{chat_id}_{feed['url']}",
+                data={'chat_id': chat_id, 'feed': feed}
+            )
+            feed['job'] = job
+
+    # Run the bot
+    logger.info('Bot is starting...')
+    try:
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Conflict as e:
+        logger.error(f"Conflict error: {e}")
+        logger.info("Waiting for 10 seconds before retrying...")
+        time.sleep(10)
+        logger.info("Retrying to start the bot...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        logger.error(f"Error running the bot: {e}")
+    finally:
+        logger.info('Bot has stopped.')
+
+
+if __name__ == '__main__':
+    main()
