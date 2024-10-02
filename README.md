@@ -25,6 +25,7 @@ add multiple feeds, set custom update intervals, and manage their subscriptions 
 - Receive notifications for new posts
 - Multi-user support
 - Secure token management
+- Customizable bot username
 
 
 ## Try This Bot
@@ -80,7 +81,15 @@ Feel free to explore the bot's features and start adding your favorite RSS feeds
 
 3. Set up your bot token:
     - Create a `.env` file in the project root
-    - Add your bot token: `BOT_TOKEN=your_bot_token_here`
+    - Add the following lines:
+   ```
+     BOT_TOKEN=your_bot_token_here
+     BOT_USER_NAME=your_preferred_bot_name
+      ```
+   - Replace your_bot_token_here with your actual Telegram Bot Token 
+   - Replace your_preferred_bot_name with the name you want to use for the bot.
+
+
 
 ...
 
