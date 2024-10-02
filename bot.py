@@ -158,24 +158,30 @@ async def add_feed_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ASK_URL
 
 
+
 async def add_feed_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Receive the RSS feed URL from the user.
+    Receive the RSS feed URL from the user and check for duplicates.
     """
+    chat_id = update.effective_chat.id
     rss_url = update.message.text.strip()
 
     # Ensure the URL starts with http:// or https://
     if not rss_url.startswith('http://') and not rss_url.startswith('https://'):
         rss_url = 'http://' + rss_url
 
-    # Save the URL in the user's context without modifying it
-    context.user_data['rss_url'] = rss_url
+    # Check if the feed is already in the user's list
+    if chat_id in user_feeds and any(feed['url'] == rss_url for feed in user_feeds[chat_id]):
+        await update.message.reply_text('طب ما الفيد ده موجود بالفعل في قائمتك يا صاحبي. جرب فيد آخر.')
+        return ConversationHandler.END
 
     # Validate the RSS feed URL
     if not is_valid_feed(rss_url):
-        await update.message.reply_text('اللينك ده مش شغال. تأكد منه وحاول تاني، أو جرب لينك تاني.\n')
-
+        await update.message.reply_text('اللينك ده مش شغال. تأكد منه وحاول تاني، أو جرب لينك تاني.')
         return ASK_URL  # Ask for the URL again
+
+    # Save the URL in the user's context
+    context.user_data['rss_url'] = rss_url
 
     await update.message.reply_text('دلوقتي قولي كل قد ايه عايز البوت يشيك على الفيد ده (بالدقايق) .'
                                     ' بس اكتب الرقم بس، يعني مثلا لو كتبت 30 \n'
