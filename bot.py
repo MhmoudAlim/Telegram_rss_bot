@@ -158,7 +158,6 @@ async def add_feed_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ASK_URL
 
 
-
 async def add_feed_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Receive the RSS feed URL from the user and check for duplicates.
@@ -278,7 +277,9 @@ async def remove_feed(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Ensure the correct number of arguments is provided
     if len(context.args) != 1:
-        await update.message.reply_text('استخدم الأمر كده: /remove <رقم_الفيد>')
+        await update.message.reply_text('استخدم الأمر كده: /remove <رقم_الفيد>\n'
+                                        'مثلا /remove 1 \n'
+                                        )
         return
 
     # Validate the feed number
