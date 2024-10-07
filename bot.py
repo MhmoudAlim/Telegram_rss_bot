@@ -52,6 +52,8 @@ telethon_client = None
 # Conversation states
 ASK_URL, ASK_INTERVAL, ASK_CHANNEL = range(3)
 
+CHOOSING_FEED, CHOOSING_CHANNEL = range(2)
+
 
 def load_data():
     """
@@ -384,34 +386,65 @@ async def list_feeds(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User {chat_id} requested their feed list.")
 
 
-async def remove_feed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def remove_feed_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Remove an RSS feed from the user's list based on its number.
+    Start the process of removing a feed.
+    """
+    await update.message.reply_text('من فضلك أدخل رقم الفيد الذي تريد إزالته:')
+    return CHOOSING_FEED
+
+async def remove_feed_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Complete the process of removing a feed.
     """
     chat_id = update.effective_chat.id
-
-    # Ensure the correct number of arguments is provided
-    if len(context.args) != 1:
-        await update.message.reply_text('استخدم الأمر كده: /remove <رقم_الفيد>\n'
-                                        'مثلا /remove 1 \n'
-                                        )
-        return
-
-    # Validate the feed number
     try:
-        feed_number = int(context.args[0]) - 1  # Adjust for zero-based indexing
+        feed_number = int(update.message.text) - 1
         if chat_id in user_feeds and 0 <= feed_number < len(user_feeds[chat_id]):
             feed_info = user_feeds[chat_id].pop(feed_number)
             # Cancel the associated job
             if feed_info['job']:
                 feed_info['job'].schedule_removal()
             save_data()
-            await update.message.reply_text(f"شلنا الفيد ده: {feed_info['url']}")
+            await update.message.reply_text(f"تم إزالة الفيد: {feed_info['url']}")
             logger.info(f"User {chat_id} removed feed: {feed_info['url']}")
         else:
-            await update.message.reply_text('رقم الفيد مش صح.')
+            await update.message.reply_text('رقم الفيد غير صحيح. يرجى المحاولة مرة أخرى.')
     except ValueError:
-        await update.message.reply_text('لازم تكتب رقم الفيد صح.')
+        await update.message.reply_text('يرجى إدخال رقم صحيح.')
+    return ConversationHandler.END
+
+async def remove_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Start the process of removing a channel.
+    """
+    await update.message.reply_text('من فضلك أدخل رقم القناة التي تريد إزالتها:')
+    return CHOOSING_CHANNEL
+
+async def remove_channel_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Complete the process of removing a channel.
+    """
+    chat_id = update.effective_chat.id
+    try:
+        channel_number = int(update.message.text) - 1
+        if chat_id in user_channels and 0 <= channel_number < len(user_channels[chat_id]):
+            channel_info = user_channels[chat_id].pop(channel_number)
+            save_data()
+            await update.message.reply_text(f"تم إزالة القناة: {channel_info['url']}")
+            logger.info(f"User {chat_id} removed channel: {channel_info['url']}")
+        else:
+            await update.message.reply_text('رقم القناة غير صحيح. يرجى المحاولة مرة أخرى.')
+    except ValueError:
+        await update.message.reply_text('يرجى إدخال رقم صحيح.')
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Cancel the current operation.
+    """
+    await update.message.reply_text('تم إلغاء العملية.')
+    return ConversationHandler.END
 
 
 async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -432,45 +465,31 @@ async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User {chat_id} requested their channel list.")
 
 
-async def remove_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Remove a Telegram channel from the user's monitoring list.
-    """
-    chat_id = update.effective_chat.id
-
-    if len(context.args) != 1:
-        await update.message.reply_text('استخدم الأمر كده: /remove_channel <رقم_القناة>')
-        return
-
-    try:
-        channel_number = int(context.args[0]) - 1
-        if chat_id in user_channels and 0 <= channel_number < len(user_channels[chat_id]):
-            channel_info = user_channels[chat_id].pop(channel_number)
-            save_data()
-            await update.message.reply_text(f"شلنا القناة دي: {channel_info['url']}")
-            logger.info(f"User {chat_id} removed channel: {channel_info['url']}")
-        else:
-            await update.message.reply_text('رقم القناة مش صح.')
-    except ValueError:
-        await update.message.reply_text('لازم تكتب رقم القناة صح.')
-
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handle the /start command. Send a welcome message and usage instructions.
+    Handle the /start command. Send a welcome message and introduction to the bot's features.
     """
+    user = update.effective_user
     welcome_message = (
-        f'مسا مسا يا {BOT_USER_NAME}\n\n'
-        'دوس على /add عشان تضيف فيد RSS جديد\n'
-        'دوس /list عشان تشوف الفيدات اللي ضفتها\n'
-        'دوس /remove <رقم_الفيد> عشان تشيل فيد\n'
-        'دوس /add_channel عشان تضيف قناة تليجرام للمراقبة\n'
-        'دوس /list_channels عشان تشوف القنوات اللي بتراقبها\n'
-        'دوس /remove_channel <رقم_القناة> عشان تشيل قناة من المراقبة\n'
-        'لو عايز تشوف الكلام ده تاني، دوس على /help.'
+        f"مرحبًا {user.first_name}! 👋\n\n"
+        "أنا بوت مراقبة الفيدات والقنوات. يمكنني مساعدتك في متابعة آخر الأخبار والتحديثات من مصادر RSS والقنوات على تيليجرام.\n\n"
+        "إليك ما يمكنني القيام به:\n\n"
+        "📰 مراقبة فيدات RSS:\n"
+        "• استخدم /add لإضافة فيد RSS جديد\n"
+        "• استخدم /list لعرض الفيدات الحالية\n"
+        "• استخدم /remove_feed لإزالة فيد\n\n"
+        "📺 مراقبة قنوات تيليجرام:\n"
+        "• استخدم /add_channel لإضافة قناة للمراقبة\n"
+        "• استخدم /list_channels لعرض القنوات الحالية\n"
+        "• استخدم /remove_channel لإزالة قناة\n\n"
+        "🆘 للمساعدة:\n"
+        "• استخدم /help في أي وقت لعرض قائمة الأوامر\n"
+        "• استخدم /cancel لإلغاء أي عملية جارية\n\n"
+        "هل أنت مستعد للبدء؟ جرب إضافة فيد RSS أو قناة تيليجرام الآن!"
     )
     await update.message.reply_text(welcome_message)
-    logger.info(f"User {update.effective_chat.id} started the bot.")
+    logger.info(f"User {user.id} started the bot.")
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -478,15 +497,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Provide a list of available commands and their usage.
     """
     help_text = (
-        "بص يا صاحبي \n"
-        "/start - ابدأ البوت وشوف التعليمات\n"
-        "/add - ضيف فيد RSS جديد\n"
-        "/list - شوف الفيدات اللي ضفتها\n"
-        "/remove <رقم_الفيد> - شيل فيد\n"
-        "/add_channel - ضيف قناة تليجرام للمراقبة\n"
-        "/list_channels - شوف القنوات اللي بتراقبها\n"
-        "/remove_channel <رقم_القناة> - شيل قناة من المراقبة\n"
-        "/help - اعرض الرسالة دي تاني"
+        "مرحبا بك! إليك قائمة بالأوامر المتاحة:\n\n"
+        "/start - بدء البوت وعرض رسالة الترحيب\n"
+        "/add - إضافة فيد RSS جديد\n"
+        "/list - عرض قائمة الفيدات المضافة\n"
+        "/remove_feed - إزالة فيد (سيطلب منك البوت إدخال رقم الفيد)\n"
+        "/add_channel - إضافة قناة تليجرام للمراقبة\n"
+        "/list_channels - عرض قائمة القنوات التي تتم مراقبتها\n"
+        "/remove_channel - إزالة قناة من المراقبة (سيطلب منك البوت إدخال رقم القناة)\n"
+        "/help - عرض هذه الرسالة مرة أخرى\n"
+        "/cancel - إلغاء العملية الحالية أثناء إضافة أو إزالة فيد أو قناة"
     )
     await update.message.reply_text(help_text)
     logger.info(f"User {update.effective_chat.id} requested help.")
@@ -527,14 +547,35 @@ def main():
         fallbacks=[CommandHandler('cancel', add_feed_cancel)],
     )
 
+    remove_feed_handler = ConversationHandler(
+        entry_points=[CommandHandler('remove_feed', remove_feed_start)],
+        states={
+            CHOOSING_FEED: [MessageHandler(filters.TEXT & ~filters.COMMAND, remove_feed_finish)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+
+    # Create conversation handler for removing a channel
+    remove_channel_handler = ConversationHandler(
+        entry_points=[CommandHandler('remove_channel', remove_channel_start)],
+        states={
+            CHOOSING_CHANNEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, remove_channel_finish)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+
+
+
     # Register handlers
     application.add_handler(CommandHandler('start', start))
     application.add_handler(feed_conv_handler)
     application.add_handler(channel_conv_handler)
+    application.add_handler(remove_feed_handler)
+    application.add_handler(remove_channel_handler)
     application.add_handler(CommandHandler('list', list_feeds))
-    application.add_handler(CommandHandler('remove', remove_feed))
+    application.add_handler(remove_feed_handler)
     application.add_handler(CommandHandler('list_channels', list_channels))
-    application.add_handler(CommandHandler('remove_channel', remove_channel))
+    application.add_handler(remove_channel_handler)
     application.add_handler(CommandHandler('help', help_command))
 
     # Schedule existing feed checker jobs
