@@ -2,7 +2,9 @@ import logging
 import os
 import pickle
 import time
-
+from telethon import TelegramClient, events
+from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.tl.types import InputPeerChannel
 from dotenv import load_dotenv
 import feedparser
 import requests

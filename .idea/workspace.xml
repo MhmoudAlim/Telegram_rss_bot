@@ -4,8 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c8929a1-3246-49a0-9be3-e53bb883e51d" name="Changes" comment="add check to emanate adding redundant feeds">
-      <change beforePath="$PROJECT_DIR$/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot.py" afterDir="false" />
+    <list default="true" id="6c8929a1-3246-49a0-9be3-e53bb883e51d" name="Changes" comment="add remove check">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -197,7 +197,15 @@
       <option name="project" value="LOCAL" />
       <updated>1727904790240</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="add remove check">
+      <option name="closed" value="true" />
+      <created>1727904995469</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1727904995469</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -208,6 +216,7 @@
     <MESSAGE value="add README.md" />
     <MESSAGE value="update README.md" />
     <MESSAGE value="add check to emanate adding redundant feeds" />
-    <option name="LAST_COMMIT_MESSAGE" value="add check to emanate adding redundant feeds" />
+    <MESSAGE value="add remove check" />
+    <option name="LAST_COMMIT_MESSAGE" value="add remove check" />
   </component>
 </project>
